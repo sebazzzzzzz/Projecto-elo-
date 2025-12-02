@@ -6,6 +6,7 @@
 #include "lista.h"
 #include "hash.h"
 #include "reportes.h"
+#include "maxheap.h"
 
 typedef struct {
     ColaPrioridad *ready;
@@ -13,7 +14,9 @@ typedef struct {
     Lista *blocked;
     Lista *finished;
     HashTable *tabla;
+    MaxHeap *terminadosHeap; 
     int numNucleos;
+    int quantum;
 } CPU;
 
 Proceso parsearLinea(const char *line);

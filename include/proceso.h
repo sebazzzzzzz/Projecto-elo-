@@ -19,6 +19,7 @@ typedef struct {
     int estado;
     Fecha fecha_vencimiento;
     int tiempo_estimado;
+    int ticksCPU;
 } Proceso;
 
 Proceso crearProceso(int id, const char *nombre, int prioridad, int estado, Fecha venc, int tiempo);

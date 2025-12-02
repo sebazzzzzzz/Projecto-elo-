@@ -1,44 +1,57 @@
 #include "maxheap.h"
 #include <stdlib.h>
 
-/** 
-static void intercambiarHeap(Proceso *a, Proceso *b) {
-    Proceso temp = *a;
-    *a = *b;
-    *b = temp;
-}
-**/
-
 MaxHeap *crearMaxHeap(int capacidad) {
+    if (capacidad <= 0) {
+        return NULL;
+    }
+
     MaxHeap *h = malloc(sizeof(MaxHeap));
+    if (!h) return NULL;
+
     h->arr = malloc(sizeof(Proceso) * capacidad);
+    if (!h->arr) {
+        free(h);
+        return NULL;
+    }
+
     h->capacidad = capacidad;
     h->tamano = 0;
     return h;
 }
 
 void destruirMaxHeap(MaxHeap *h) {
+    if (!h) return;
     free(h->arr);
     free(h);
 }
 
 int heapVacio(MaxHeap *h) {
+    if (!h) return 1;
     return h->tamano == 0;
 }
 
 void insertarHeap(MaxHeap *h, Proceso p) {
-    if (h->tamano == h->capacidad) return;
+    if (!h) return;
+
+    if (h->tamano == h->capacidad) {
+        // printf("MaxHeap lleno, no se puede insertar\n");
+        return;
+    }
+
     h->arr[h->tamano] = p;
-    heapificarArribaHeap(h, h->tamano);
     h->tamano++;
+    heapificarArribaHeap(h, h->tamano - 1);
 }
 
 Proceso extraerMaximo(MaxHeap *h) {
-    if (h->tamano == 0) {
-        Proceso vacio;
-        vacio.id = -1;
-        return vacio;
+    Proceso vacio;
+    vacio.id = -1;
+
+    if (!h || h->tamano == 0) {
+        return vacio;   // o crearProcesoVacio()
     }
+
     Proceso max = h->arr[0];
     h->arr[0] = h->arr[h->tamano - 1];
     h->tamano--;
@@ -47,6 +60,8 @@ Proceso extraerMaximo(MaxHeap *h) {
 }
 
 void heapificarArribaHeap(MaxHeap *h, int indice) {
+    if (!h) return;
+
     while (indice > 0) {
         int padre = (indice - 1) / 2;
         if (h->arr[indice].prioridad > h->arr[padre].prioridad) {
@@ -61,6 +76,8 @@ void heapificarArribaHeap(MaxHeap *h, int indice) {
 }
 
 void heapificarAbajoHeap(MaxHeap *h, int indice) {
+    if (!h) return;
+
     while (1) {
         int izq = 2 * indice + 1;
         int der = 2 * indice + 2;

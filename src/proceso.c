@@ -1,7 +1,9 @@
 #include "proceso.h"
-
+#include <string.h>
+#include <stdio.h>
 Proceso crearProceso(int id, const char *nombre, int prioridad, int estado, Fecha venc, int tiempo) {
     Proceso p;
+    p.ticksCPU = 0;
     p.id = id;
     strncpy(p.nombre, nombre, 49);
     p.nombre[49] = '\0';

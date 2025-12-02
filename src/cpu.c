@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "cpu.h"
+#include "reportes.h"
+#include "maxheap.h"
 
 Proceso parsearLinea(const char *linea) {
     Proceso p;
@@ -21,32 +23,49 @@ Proceso parsearLinea(const char *linea) {
 
 void cargarArchivo(CPU *cpu, const char *archivo) {
     FILE *f = fopen(archivo, "r");
-    if (!f) return;
-
+    if (!f) 
+    {printf("ERROR: no se pudo abrir el archivo '%s'\n", archivo);
+        return;
+    }
     char linea[256];
+    int count = 0;
     while (fgets(linea, sizeof(linea), f)) {
+        printf("Leyendo linea: %s", linea);
         Proceso p = parsearLinea(linea);
         registrarProceso(cpu, p);
+        count++;
     }
 
     fclose(f);
+    printf("Se cargaron %d procesos desde '%s'\n", count, archivo);
 }
 
 CPU *crearCPU(int capacidadCola, int capacidadHash) {
     CPU *cpu = malloc(sizeof(CPU));
-    cpu->ready = crearColaPrioridad(capacidadCola);
+    if (!cpu) return NULL;
+
+    cpu->ready   = crearColaPrioridad(capacidadCola);
+    cpu->blocked = crearLista();
     cpu->running = crearLista();
-    cpu->finished = crearLista();
-    cpu->tabla = crearHash(capacidadHash);
+    cpu->finished= crearLista();
+    cpu->tabla   = crearHash(capacidadHash);
+    cpu->terminadosHeap = crearMaxHeap(capacidadCola);
     cpu->numNucleos = 2;
+    cpu->quantum = 5; 
+
+
     return cpu;
 }
 
 void destruirCPU(CPU *cpu) {
+    if (!cpu) return;
     destruirColaPrioridad(cpu->ready);
     destruirLista(cpu->running);
+    destruirLista(cpu->blocked);
     destruirLista(cpu->finished);
     destruirHash(cpu->tabla);
+    destruirMaxHeap(cpu->terminadosHeap);
+
     free(cpu);
 }
 
@@ -85,8 +104,8 @@ int pausarProceso(CPU *cpu, int id) {
 
     if (eliminarPorId(cpu->running, id)) {
         Proceso p = n->dato;
-        p.estado = 0;
-        insertarPrioridad(cpu->ready, p);
+        p.estado = 2;              
+        insertarFinal(cpu->blocked, p);
         n->dato = p;
         return 1;
     }
@@ -99,12 +118,15 @@ int reanudarProceso(CPU *cpu, int id) {
     if (n == NULL) return 0;
 
     Proceso p = n->dato;
-    if (p.estado == 3) return 0;
+    if (p.estado == 3) return 0;   
 
-    eliminarPorId(cpu->running, id);
-    eliminarPorId(cpu->finished, id);
 
-    p.estado = 0;
+    if (!eliminarPorId(cpu->blocked, id)) {
+
+        return 0;
+    }
+
+    p.estado = 0;                 
     insertarPrioridad(cpu->ready, p);
     n->dato = p;
 
@@ -139,42 +161,46 @@ void simular(CPU *cpu, int ticks) {
 
         while (contarLista(cpu->running) < cpu->numNucleos && !colaVacia(cpu->ready)) {
             Proceso p = extraerMayorPrioridad(cpu->ready);
-            p.estado = 1;
+            p.estado = 1; 
             insertarFinal(cpu->running, p);
-            hashInsertar(cpu->tabla, p);
+            hashActualizar(cpu->tabla, p);
         }
 
         Nodo *n = cpu->running->cabeza;
-        Nodo *anterior = NULL;
+
+        cpu->running->cabeza = NULL;
 
         while (n != NULL) {
             Nodo *siguiente = n->siguiente;
             Proceso p = n->dato;
+            free(n);
 
             p.tiempo_estimado -= 1;
+            p.ticksCPU += 1;
 
             if (p.tiempo_estimado <= 0) {
                 p.estado = 3;
+                p.ticksCPU = 0;
                 insertarFinal(cpu->finished, p);
-                hashInsertar(cpu->tabla, p);
+                insertarHeap(cpu->terminadosHeap, p);
+                hashActualizar(cpu->tabla, p);
 
                 char linea[256];
                 proceso_a_string(&p, linea);
-                printf("%s\n", linea);
+                printf("TERMINA -> %s\n", linea);
                 escribirLog(linea);
                 escribirLog("\n");
-            } else {
+            }
+            else if (p.ticksCPU >= cpu->quantum) {
                 p.estado = 0;
+                p.ticksCPU = 0;
                 insertarPrioridad(cpu->ready, p);
-                hashInsertar(cpu->tabla, p);
+                hashActualizar(cpu->tabla, p);
+            }
+            else {
+                insertarFinal(cpu->running, p);
             }
 
-            if (anterior == NULL) {
-                cpu->running->cabeza = siguiente;
-            } else {
-                anterior->siguiente = siguiente;
-            }
-            free(n);
             n = siguiente;
         }
 
@@ -184,30 +210,96 @@ void simular(CPU *cpu, int ticks) {
             int finished = contarLista(cpu->finished);
 
             char tickLine[128];
-            sprintf(tickLine,
-                    "[TICK %d] running=%d | ready=%d | finished=%d\n",
+            sprintf(tickLine, "[TICK %d] running=%d | ready=%d | finished=%d\n",
                     t, running, ready, finished);
             escribirLog(tickLine);
+            printf("%s", tickLine);
         }
 
-        if (colaVacia(cpu->ready) && cpu->running->cabeza == NULL)
+        if (colaVacia(cpu->ready) && cpu->running->cabeza == NULL) {
+            printf("Simulacion termina en TICK %d (no hay procesos activos)\n", t);
             break;
+        }
     }
 }
 
 
+void generarReporteFinal(CPU *cpu) {
+    ArrayProcesos ap = listaAArray(cpu->finished);
+
+    if (ap.tamano == 0) {
+        printf("No hay procesos finalizados, no se puede generar reporte.\n");
+        return;
+    }
+
+
+    ordenarPorPrioridad(ap); 
+
+    char bufferPrioridad[8192];  
+    generarReporte(ap, bufferPrioridad);
+
+    printf("\n===== REPORTE ORDENADO POR PRIORIDAD (mayor a menor) =====\n");
+    printf("%s", bufferPrioridad);
+
+    FILE *fprio = fopen("data/reporte_prioridad.txt", "w");
+    if (fprio) {
+        fputs(bufferPrioridad, fprio);
+        fclose(fprio);
+    } else {
+        printf("No se pudo crear data/reporte_prioridad.txt\n");
+    }
+
+
+    ordenarPorFecha(ap);  
+
+    char bufferFecha[8192];
+    generarReporte(ap, bufferFecha);
+
+    printf("\n===== REPORTE ORDENADO POR FECHA (más antigua primero) =====\n");
+    printf("%s", bufferFecha);
+
+    FILE *ffecha = fopen("data/reporte_fecha.txt", "w");
+    if (ffecha) {
+        fputs(bufferFecha, ffecha);
+        fclose(ffecha);
+    } else {
+        printf("No se pudo crear data/reporte_fecha.txt\n");
+    }
+
+
+    liberarArrayProcesos(ap);
+}
+
+
+
 int main() {
     CPU *cpu = crearCPU(200, 200);
+    int num_caso = 0;
 
     prepararLog("data/salida.txt");
 
-    cargarArchivo(cpu, "data/caso_prueba.txt");
+    printf("Bienvenido! introduce el número de caso a probar (1,2,3): ");
+    scanf("%d", &num_caso);
+
+    while (num_caso < 1 || num_caso > 3) {
+        printf("Entrada invalida. Seleccione 1-3: ");
+        scanf("%d", &num_caso);
+    }
+
+    char nombreArchivo[64];
+    sprintf(nombreArchivo, "data/caso_prueba%d.txt", num_caso);
+
+    printf("Cargando archivo: %s\n", nombreArchivo);
+    cargarArchivo(cpu, nombreArchivo);
 
     simular(cpu, 3000);
 
     cerrarLog();
 
+    generarReporteFinal(cpu);
+
     destruirCPU(cpu);
 
     return 0;
 }
+

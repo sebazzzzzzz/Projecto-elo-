@@ -3,16 +3,22 @@
 
 Lista *crearLista() {
     Lista *l = malloc(sizeof(Lista));
+    if (!l) return NULL;
     l->cabeza = NULL;
     return l;
 }
 
 int listaVacia(Lista *l) {
+    if (!l) return 1;
     return l->cabeza == NULL;
 }
 
 void insertarFinal(Lista *l, Proceso p) {
+    if (!l) return;
+
     Nodo *nuevo = malloc(sizeof(Nodo));
+    if (!nuevo) return;
+
     nuevo->dato = p;
     nuevo->siguiente = NULL;
 
@@ -22,13 +28,16 @@ void insertarFinal(Lista *l, Proceso p) {
     }
 
     Nodo *act = l->cabeza;
-    while (act->siguiente != NULL)
+    while (act->siguiente != NULL) {
         act = act->siguiente;
+    }
 
     act->siguiente = nuevo;
 }
 
 int eliminarPorId(Lista *l, int id) {
+    if (!l) return 0;
+
     Nodo *act = l->cabeza;
     Nodo *prev = NULL;
 
@@ -50,6 +59,8 @@ int eliminarPorId(Lista *l, int id) {
 }
 
 Nodo *buscarPorId(Lista *l, int id) {
+    if (!l) return NULL;
+
     Nodo *act = l->cabeza;
     while (act != NULL) {
         if (act->dato.id == id)
@@ -60,6 +71,8 @@ Nodo *buscarPorId(Lista *l, int id) {
 }
 
 void destruirLista(Lista *l) {
+    if (!l) return;
+
     Nodo *act = l->cabeza;
     while (act != NULL) {
         Nodo *sig = act->siguiente;
@@ -68,3 +81,4 @@ void destruirLista(Lista *l) {
     }
     free(l);
 }
+
